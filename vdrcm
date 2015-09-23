@@ -1,0 +1,466 @@
+#!/bin/sh
+
+#
+# vdrcm: interactive console dialogs script for managing configuration files
+# of VDR and it's plugins
+#
+#
+# (c) 2015, Lucian Muresan < lucianm AT users DOT sourceforge DOT net >
+#
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+# Or, point your browser to http://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+#
+#
+# Homepage: https://github.com/lucianm/vdrcm
+#
+
+
+
+my_script="$(basename $0)"
+script_ver=0.0.1
+tmp_file="/tmp/${my_script}_buffer"
+log_file="/tmp/${my_script}.log"
+
+cnt_prefix_width=3
+cnt_prefix_vdr=0
+cnt_prefix_max=999
+
+sleep_delay=0.03
+
+# directories
+ARGSDIR=$(pkg-config --variable=argsdir vdr)
+CFG_AVAIL_DIR=${ARGSDIR}/../conf.avail
+
+diaexec=$(which dialog)
+if [ -x $diaexec ]; then
+	no_tags="--no-tags"
+	no_items="--no-items"
+	btn_label_suffix="label"
+else
+	diaexec=$(which whiptail)
+	no_tags="--notags"
+	no_items="--noitem"
+	btn_label_suffix="button"
+fi
+if [ -x $diaexec ]; then
+	echo "Using $diaexec ..."
+else
+	echo "WARNING: No whiptail or dialog implementation found !!!"
+fi
+
+
+_timestamp_action() {
+	echo "$(date): $1"
+}
+
+_log() {
+	local msg="$(echo $(_timestamp_action "$1"))"
+	echo "${msg}" >> $log_file
+#	echo "${msg}"
+}
+
+echo "" > $log_file
+_log "Starting $my_script ..."
+
+
+#
+#
+# scan enabled plugins
+_scan_enabled_plgs() {
+	_log "---> $FUNCNAME"
+	enabled_count=0
+	local idx=0
+	unset enabled_plg_syms
+	unset enabled_plg_names
+	unset enabled_plg_targets
+	unset enabled_plg_prefixes
+	for plg in $(ls ${ARGSDIR}); do
+		enabled_sym=$(ls -l ${ARGSDIR} | grep $plg | grep '>' | cut -d '>' -f1)
+		enabled_sym=${enabled_sym/ -/}
+		enabled_plg_syms[$idx]=$(echo $enabled_sym | rev | cut -d ' ' -f1 | rev)
+		enabled_plg_prefixes[$idx]=$(echo $enabled_sym | rev | cut -d ' ' -f1 | rev | cut -d '_' -f1)
+		enabled_sym=$(echo $enabled_sym | rev | cut -d ' ' -f1 | rev | cut -d '_' -f2)
+		enabled_plg_names[$idx]=${enabled_sym/.conf/}
+		enabled_plg_targets[${idx}]=$(ls -l ${ARGSDIR} | grep $plg | grep '>' | cut -d '>' -f2 | cut -d ' ' -f2)
+#
+#		echo enabled_plg_names[${idx}]=${enabled_plg_names[${idx}]}
+#		echo enabled_plg_syms[${idx}]=${enabled_plg_syms[${idx}]}
+#		echo enabled_plg_prefixes[${idx}]=${enabled_plg_prefixes[${idx}]}
+#		echo enabled_plg_targets[$idx]=${enabled_plg_targets[${idx}]}
+#		echo .
+#
+		((idx++))
+	done
+	let enabled_count=idx
+	_log "<--- $FUNCNAME"
+}
+
+
+#
+#
+# scan all available plugins
+_scan_avail_plgs() {
+	_log "---> $FUNCNAME"
+	available_count=0
+	unset available_plg
+	for plg in $(ls ${CFG_AVAIL_DIR} | grep '.conf'); do
+		available_plg[$available_count]=$plg
+		((available_count++))
+	done
+	_log "<--- $FUNCNAME"
+}
+
+
+# checks if an args file has a section [vdr]
+#
+# $1 : full path to args file to check
+_has_vdr_section() {
+	[ "$(grep '\[vdr]' $1)" == "[vdr]" ] && return 0
+	return 1
+}
+
+
+# checks if a plugin is enabled
+#
+# $1 : base name of available plugin
+_check_enabled() {
+	for enabled_plg in "${enabled_plg_targets[@]}"; do
+		if [ "$(readlink -f ${ARGSDIR}/${enabled_plg})" == "$(readlink -f ${ARGSDIR}/../conf.avail/$1)" ]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+
+#
+#
+#
+_fmt_counter() {
+	printf "%0*d\n" $cnt_prefix_width $1
+}
+
+
+#
+#
+#
+_enable_plg() {
+	((numprefix = cnt_prefix_max))
+	if _has_vdr_section ${ARGSDIR}/../conf.avail/$1.conf; then ((numprefix = cnt_prefix_vdr)); fi
+	ln -s "../conf.avail/$1.conf" "${ARGSDIR}/$(_fmt_counter $numprefix)_$1.conf"
+}
+
+
+#
+#
+#
+_disable_plg() {
+	[ _has_vdr_section ${ARGSDIR}/*_$1.conf ] || rm -f ${ARGSDIR}/*_$1.conf
+}
+
+
+#
+#
+# $@ : all plugins which should be enabled
+_process_symlinks() {
+	_log "---> $FUNCNAME"
+	local idx=0
+	local percent=0
+	((count = ${#enabled_plg_names[@]} + $#))
+	# loop for disabling
+	local found=0
+	for i in "${enabled_plg_names[@]}"; do
+		found=0
+		((idx++))
+		for new_enabled in $@; do
+			if [ $i == $new_enabled ]; then
+				found=1
+				break
+			fi
+		done
+		if [ $found -eq 0 ]; then
+#			echo disabling $i
+			_disable_plg $i
+		fi
+		((percent = idx * 100 / count))
+		sleep $sleep_delay
+		echo $percent | $diaexec --title "$my_script $script_ver:" --gauge "Processing plugins..." 0 60 0
+	done
+	# loop for enabling new (and "vdr" under the hood, too)
+	for new_enabled in vdr $@; do
+		found=0
+		((idx++))
+		for i in "${enabled_plg_names[@]}"; do
+			if [ $i == $new_enabled ]; then
+				found=1
+				break
+			fi
+		done
+		if [[ $found -eq 0 ]]; then
+		# && [[ "$(ls -l ${ARGSDIR} | grep ${new_enabled}.conf)" != "" ]]
+#			echo enabling $new_enabled
+			_enable_plg $new_enabled
+		else
+		# a bit ugly, but at least it will be consistent
+			if [ -e "${ARGSDIR}/$new_enabled.conf" ]; then
+			# && ! [ _has_vdr_section "${ARGSDIR}/$new_enabled.conf" ]
+				echo deleting "${ARGSDIR}/$new_enabled.conf"
+				rm -f ${ARGSDIR}/$new_enabled.conf
+				echo please run $my_script again to enable $new_enabled properly!
+			fi
+		fi
+		((percent = idx * 100 / count))
+		sleep $sleep_delay
+		echo $percent | $diaexec --title "$my_script $script_ver:" --gauge "Processing plugins..." 0 60 0
+	done
+	_log "<--- $FUNCNAME"
+}
+
+
+#
+#
+#
+_enable_disable() {
+	_log "---> $FUNCNAME"
+	local idx=0
+	local percent=0
+	local on_off=""
+	local plg_line=""
+	for avail_plg in "${available_plg[@]}"; do
+		on_off="off"
+		_check_enabled $avail_plg && on_off="on"
+		_has_vdr_section ${ARGSDIR}/../conf.avail/$avail_plg || plg_line="${plg_line} ${avail_plg/.conf/} $on_off"
+		((idx++))
+		((percent = idx * 100 / available_count))
+		sleep $sleep_delay
+		echo $percent | $diaexec --title "$my_script $script_ver:" --gauge "Collecting available plugins..." 0 60 0
+	done
+
+	$diaexec --title "$my_script $script_ver:" \
+		--clear $no_items \
+		--ok-$btn_label_suffix "Apply changes" \
+		--checklist "\nEnable/Disable VDR plugins found in\n\n${ARGSDIR}/../conf.avail:" 0 60 0${plg_line} \
+		2> ${tmp_file}
+	[ $? -eq 0 ] && _process_symlinks vdr $(cat ${tmp_file})
+	_scan_enabled_plgs
+	_log "<--- $FUNCNAME"
+}
+
+
+#
+#
+#
+_normalize_prefixes() {
+	_log "---> $FUNCNAME"
+	local idx=0
+	for enabled_plg in "${enabled_plg_names[@]}"; do
+		if _has_vdr_section "${ARGSDIR}/${enabled_plg_syms[${idx}]}"; then
+			realindex=0
+		else
+			[ $idx -eq 0 ] && ((idx++))
+			realindex=$idx
+		fi
+		target_file="${ARGSDIR}/$(_fmt_counter $realindex)_${enabled_plg_names[${idx}]}.conf"
+		[ -e "$target_file" ] || mv -f -u -T "${ARGSDIR}/${enabled_plg_syms[${idx}]}" $target_file
+	((idx++))
+	done
+	_log "<--- $FUNCNAME"
+}
+
+
+#
+# $1 will be inserted before $2
+#
+_insert_plugin_before() {
+	_log "---> $FUNCNAME"
+	local plg_idx_src=$1
+	local plg_idx_dst=$2
+	mv "${ARGSDIR}/${enabled_plg_syms[${plg_idx_src}]}" \
+		"${ARGSDIR}/${enabled_plg_prefixes[${plg_idx_dst}]}0_${enabled_plg_names[${plg_idx_src}]}.conf"
+	_log "<--- $FUNCNAME"
+}
+
+
+#
+#
+#
+_move_plugin_dst() {
+	_log "---> $FUNCNAME"
+	local idx_src="$1"
+	if [ "$1" == "" ]; then
+		((idx_src = $enabled_count / 2))
+	fi
+	
+	local idx=0
+	local plg_line=""
+	for enabled_plg in "${enabled_plg_names[@]}"; do
+		_has_vdr_section ${ARGSDIR}/${enabled_plg_syms[$idx]} || plg_line="${plg_line} ${idx} ${enabled_plg}"
+		((idx++))
+	done
+
+	$diaexec --title "$my_script $script_ver:" \
+		--clear $no_tags \
+		--default-item "$idx_src" \
+		--menu "\nSelect new plugin location and confirm:" 0 60 0 \
+			${plg_line} \
+		2> ${tmp_file}
+	if [ $? -eq 0 ]; then
+		local idx_dst="$(cat ${tmp_file})"
+		if [ "$idx_src" != "$idx_dst" ]; then
+			_insert_plugin_before $idx_src $idx_dst
+			_scan_enabled_plgs
+			_normalize_prefixes
+		fi
+	else
+		echo "$idx_src" > ${tmp_file}
+	fi
+	_log "<--- $FUNCNAME"
+}
+
+
+#
+#
+#
+_move_plugin() {
+	_log "---> $FUNCNAME"
+	local idx_src_start="$1"
+	if [ "$1" == "" ]; then
+		((idx_src_start = $enabled_count / 2))
+	fi
+
+	while : ; do
+		local idx=0
+		local plg_line=""
+		for enabled_plg in "${enabled_plg_names[@]}"; do
+			_has_vdr_section ${ARGSDIR}/${enabled_plg_syms[$idx]} || plg_line="${plg_line} ${idx} ${enabled_plg}"
+			((idx++))
+		done
+
+		local plg_line_array=( $plg_line )
+		if (( ${#plg_line_array[@]} < 4 )); then
+			$diaexec --title "$my_script $script_ver:" \
+				--clear \
+				--msgbox "\nYou need to enable at least 2 plugins for this!" 0 0
+			_log "<--- $FUNCNAME"
+			return
+		fi
+
+		$diaexec --title "$my_script $script_ver:" \
+			--clear $no_tags \
+			--ok-$btn_label_suffix "Choose new location" \
+			--default-item "$idx_src_start" \
+			--menu "\nSelect which plugin to move, then choose new location:" 0 60 0 \
+				${plg_line} \
+			2> ${tmp_file}
+		if [ $? -eq 0 ]; then
+			_move_plugin_dst $(cat ${tmp_file})
+			idx_src_start=$(cat ${tmp_file})
+		else
+			break
+		fi
+	done
+	_log "<--- $FUNCNAME"
+}
+
+
+#
+#
+#
+_edit_cfgs() {
+	_log "---> $FUNCNAME"
+	local idx_src_start="0"
+	while : ; do
+		local idx=0
+		local plg_line=""
+		for enabled_plg in "${enabled_plg_names[@]}"; do
+			plg_line="${plg_line} ${idx} ${enabled_plg}"
+			((idx++))
+		done
+
+		$diaexec --title "$my_script $script_ver:" \
+			--clear $no_tags \
+			--ok-$btn_label_suffix "Edit" \
+			--default-item "$idx_src_start" \
+			--menu "\nSelect enabled configuration file:" 0 60 0 \
+				${plg_line} \
+			2> ${tmp_file}
+		if [ $? -eq 0 ]; then
+			idx_src_start=$(cat ${tmp_file})
+			$EDITOR "${ARGSDIR}/${enabled_plg_syms[${idx_src_start}]}"
+		else
+			break
+		fi
+	done
+	_log "<--- $FUNCNAME"
+}
+
+
+#
+#
+#
+_main_menu() {
+	_log "---> $FUNCNAME"
+	local selected_item="0"
+	while : ; do
+		$diaexec --title "$my_script $script_ver:" \
+			--clear $no_tags \
+			--ok-$btn_label_suffix "Execute selected" \
+			--cancel-$btn_label_suffix "Quit $my_script" \
+			--default-item $selected_item \
+			--menu "\nMain menu" 0 60 0 \
+				0 "Enable or disable plugins" \
+				1 "Arrange plugin load order" \
+				2 "Edit configuration files" \
+			2> ${tmp_file}
+		if [ $? -eq 0 ]; then
+			selected_item="$(cat ${tmp_file})"
+			case "$selected_item" in
+				0)
+					_enable_disable
+					_normalize_prefixes
+					;;
+				1)
+					_move_plugin
+					;;
+				2)
+					_edit_cfgs
+					;;
+			esac
+		else
+			break
+		fi
+	done
+	_log "<--- $FUNCNAME"
+}
+
+
+#
+#
+#
+_main() {
+	_log "---> $FUNCNAME"
+	current_dir=$(pwd)
+
+	_scan_enabled_plgs
+	_scan_avail_plgs
+	_main_menu
+
+	cd $current_dir
+	_log "<--- $FUNCNAME"
+}
+
+_main
+clear
