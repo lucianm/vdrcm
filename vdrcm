@@ -5,7 +5,7 @@
 # of VDR and it's plugins
 #
 #
-# (c) 2015, Lucian Muresan < lucianm AT users DOT sourceforge DOT net >
+# (c) 2015-2016, Lucian Muresan < lucianm AT users DOT sourceforge DOT net >
 #
 #
 # This program is free software; you can redistribute it and/or
@@ -30,7 +30,7 @@
 
 
 my_script="$(basename $0)"
-script_ver=0.0.1
+script_ver=0.0.2
 tmp_file="/tmp/${my_script}_buffer"
 log_file="/tmp/${my_script}.log"
 

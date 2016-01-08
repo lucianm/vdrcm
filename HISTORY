@@ -1,3 +1,12 @@
+2016.01.08 - 0.0.2
+    - checking for pkg-config, if not present, reading ARGSDIR from ~/.vdrcm;
+    - ARGSDIR and $ARGSDIR/../conf.avail must exist, otherwise the script will exit;
+    - added more info to README.md;
+    - fixed progress (gauge) display;
+    - preferring whiptail over dialog when both are available, due to somewhat better look;
+    - consolidating CFG_AVAIL_DIR variable usage;
+    - added a simple Makefile;
+    - added command-line mode (see README.md).
 
 2015.09.24 - 0.0.1
     - initial revision
