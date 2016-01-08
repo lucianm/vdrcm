@@ -56,30 +56,70 @@ cnt_prefix_max=999
 sleep_delay=0.03
 
 # directories
-ARGSDIR=$(pkg-config --variable=argsdir vdr)
-CFG_AVAIL_DIR=${ARGSDIR}/../conf.avail
-
-diaexec=$(which dialog)
-if [ -x $diaexec ]; then
-	no_tags="--no-tags"
-	no_items="--no-items"
-	btn_label_suffix="label"
+pkgcfg=$(which pkg-config)
+if [ -x "$pkgcfg" ]; then
+	ARGSDIR=$($pkgcfg --variable=argsdir vdr)
 else
-	diaexec=$(which whiptail)
-	no_tags="--notags"
-	no_items="--noitem"
-	btn_label_suffix="button"
+	ARGSDIR=$(grep argsdir= ~/.$my_script | cut -d '=' -f 2)
 fi
-if [ -x $diaexec ]; then
-	echo "Using $diaexec ..."
-else
-	echo "WARNING: No whiptail or dialog implementation found !!!"
+if [ -z "$ARGSDIR" ]; then
+	_log "Could not determine ARGSDIR!! Either VDR is not installed by a \
+package manager which also installs a pkgcfg file, or there is no \
+file '~/.$my_script' containing 'argsdir=PATH_TO_ARGS_DIR'!!!" "--printout"
+	exit 1
 fi
 
+AVAIL_SUBDIR="../conf.avail"
+CFG_AVAIL_DIR=${ARGSDIR}/${AVAIL_SUBDIR}
+if [ ! -d "$ARGSDIR" ]; then
+	_log "Directory ARGSDIR='$ARGSDIR' does not exist !!" "--printout"
+	exit 2
+fi
+if [ ! -d "$CFG_AVAIL_DIR" ]; then
+	_log "Directory CFG_AVAIL_DIR='$CFG_AVAIL_DIR' does not exist !!" "--printout"
+	exit 3
+fi
 
 
+#
+#
+# prints usage help
+_display_help_usage() {
+	printf "%s (%s) usage:\n" "$my_script" "$script_ver"
+	printf "To use '$my_script' interactively, just call it without any parameter.\n"
+	printf "Non-interactive commands supported (suitable for scripting):\n"
+	printf "\t%s --enable PLUGIN-NAME\n" "$my_script"
+	printf "\t%s --disable PLUGIN-NAME\n" "$my_script"
+	printf "\t%s --insert-before PLUGIN-INDEX-SRC PLUGIN-INDEX-DST\n" "$my_script"
+	printf "\t%s --help\n" "$my_script"
+	printf "\t%s --version\n" "$my_script"
 }
 
+#
+#
+# finds dialog implementation if necessary, and configures some needed vars
+_find_dialog_exec() {
+	_log "---> $FUNCNAME"
+	diaexec=$(which whiptail)
+	if [ -x "$diaexec" ]; then
+		no_tags="--notags"
+		no_items="--noitem"
+		btn_label_suffix="button"
+	else
+		diaexec=$(which dialog)
+		no_tags="--no-tags"
+		no_items="--no-items"
+		btn_label_suffix="label"
+	fi
+	if [ -x "$diaexec" ]; then
+		_log "using $diaexec for interactive dialogs..."
+		return 0
+	else
+		_log "ERROR: No whiptail or dialog implementation found !!!" "--printout"
+		return 1
+	fi
+	_log "<--- $FUNCNAME"
+}
 
 
 #
@@ -152,6 +192,12 @@ _fmt_counter() {
 	printf "%0*d\n" $cnt_prefix_width $1
 }
 
+_remove_surrounding_quotes() {
+	tmpstr=$1
+	tmpstr="${tmpstr%\"}"
+	tmpstr="${tmpstr#\"}"
+	echo $tmpstr
+}
 
 #
 #
@@ -167,7 +213,8 @@ _enable_plg() {
 #
 #
 _disable_plg() {
-	[ _has_vdr_section ${ARGSDIR}/*_$1.conf ] || rm -f ${ARGSDIR}/*_$1.conf
+	plg="$(_remove_surrounding_quotes $1)"
+	if ! _has_vdr_section ${ARGSDIR}/*_$plg.conf; then rm -f ${ARGSDIR}/*_$plg.conf; fi
 }
 
 
@@ -181,50 +228,52 @@ _process_symlinks() {
 	((count = ${#enabled_plg_names[@]} + $#))
 	# loop for disabling
 	local found=0
-	for i in "${enabled_plg_names[@]}"; do
-		found=0
-		((idx++))
-		for new_enabled in $@; do
-			if [ $i == $new_enabled ]; then
-				found=1
-				break
-			fi
-		done
-		if [ $found -eq 0 ]; then
-#			echo disabling $i
-			_disable_plg $i
-		fi
-		((percent = idx * 100 / count))
-		sleep $sleep_delay
-		echo $percent | $diaexec --title "$my_script $script_ver:" --gauge "Processing plugins..." 0 60 0
-	done
-	# loop for enabling new (and "vdr" under the hood, too)
-	for new_enabled in vdr $@; do
-		found=0
-		((idx++))
+	{
 		for i in "${enabled_plg_names[@]}"; do
-			if [ $i == $new_enabled ]; then
-				found=1
-				break
+			found=0
+			((idx++))
+			for new_enabled in $@; do
+				if [ $i == $new_enabled ]; then
+					found=1
+					break
+				fi
+			done
+			if [ $found -eq 0 ]; then
+				#_log "disabling $i"
+				_disable_plg $i
 			fi
+			((percent = idx * 50 / count))
+			sleep $sleep_delay
+			echo $percent
 		done
-		if [[ $found -eq 0 ]]; then
-		# && [[ "$(ls -l ${ARGSDIR} | grep ${new_enabled}.conf)" != "" ]]
-#			echo enabling $new_enabled
-			_enable_plg $new_enabled
-		else
-		# a bit ugly, but at least it will be consistent
-			if [ -e "${ARGSDIR}/$new_enabled.conf" ]; then
-			# && ! [ _has_vdr_section "${ARGSDIR}/$new_enabled.conf" ]
-				echo deleting "${ARGSDIR}/$new_enabled.conf"
-				rm -f ${ARGSDIR}/$new_enabled.conf
-				echo please run $my_script again to enable $new_enabled properly!
+		# loop for enabling new (and "vdr" under the hood, too)
+		for new_enabled in vdr $@; do
+			found=0
+			((idx++))
+			for i in "${enabled_plg_names[@]}"; do
+				if [ $i == $new_enabled ]; then
+					found=1
+					break
+				fi
+			done
+			if [[ $found -eq 0 ]]; then
+			# && [[ "$(ls -l ${ARGSDIR} | grep ${new_enabled}.conf)" != "" ]]
+				#_log "enabling $new_enabled"
+				_enable_plg $new_enabled
+			else
+			# a bit ugly, but at least it will be consistent
+				if [ -e "${ARGSDIR}/$new_enabled.conf" ]; then
+				# && ! [ _has_vdr_section "${ARGSDIR}/$new_enabled.conf" ]
+					echo deleting "${ARGSDIR}/$new_enabled.conf"
+					rm -f ${ARGSDIR}/$new_enabled.conf
+					_log "please run $my_script again to enable $new_enabled properly!" "--printout"
+				fi
 			fi
-		fi
-		((percent = idx * 100 / count))
-		sleep $sleep_delay
-		echo $percent | $diaexec --title "$my_script $script_ver:" --gauge "Processing plugins..." 0 60 0
-	done
+			((percent = idx * 50 / count))
+			sleep $sleep_delay
+			echo $percent
+		done
+	} | $diaexec --title "$my_script $script_ver:" --gauge "Processing plugins..." 0 60 0
 	_log "<--- $FUNCNAME"
 }
 
@@ -238,15 +287,24 @@ _enable_disable() {
 	local percent=0
 	local on_off=""
 	local plg_line=""
-	for avail_plg in "${available_plg[@]}"; do
-		on_off="off"
-		_check_enabled $avail_plg && on_off="on"
 		_has_vdr_section ${ARGSDIR}/../conf.avail/$avail_plg || plg_line="${plg_line} ${avail_plg/.conf/} $on_off"
-		((idx++))
-		((percent = idx * 100 / available_count))
-		sleep $sleep_delay
-		echo $percent | $diaexec --title "$my_script $script_ver:" --gauge "Collecting available plugins..." 0 60 0
-	done
+	{
+		for avail_plg in "${available_plg[@]}"; do
+			on_off="off"
+			_check_enabled $avail_plg && on_off="on"
+			((idx++))
+			((percent = idx * 100 / available_count))
+			sleep $sleep_delay
+			echo $percent
+		done
+		_log "Available plugins and their status: $plg_line"
+		# save plugins to file buffer, because $plg_line gets out of scope
+		echo $plg_line > ${tmp_file}
+
+	} | $diaexec --title "$my_script $script_ver:" --gauge "Collecting available plugins..." 0 60 0
+
+	# read plugins from file buffer
+	plg_line="$(cat ${tmp_file})"
 
 	$diaexec --title "$my_script $script_ver:" \
 		--clear $no_items \
@@ -289,6 +347,7 @@ _insert_plugin_before() {
 	local plg_idx_dst=$2
 	mv "${ARGSDIR}/${enabled_plg_syms[${plg_idx_src}]}" \
 		"${ARGSDIR}/${enabled_plg_prefixes[${plg_idx_dst}]}0_${enabled_plg_names[${plg_idx_src}]}.conf" 2> /dev/null
+	_log "Moving '${enabled_plg_names[${plg_idx_src}]}' (pos. ${plg_idx_src}) before '${enabled_plg_names[${plg_idx_dst}]}' (pos ${plg_idx_dst})"
 	_log "<--- $FUNCNAME"
 }
 
@@ -455,11 +514,62 @@ _main() {
 
 	_scan_enabled_plgs
 	_scan_avail_plgs
-	_main_menu
+	
+	case $# in
+		0)
+			_find_dialog_exec && _main_menu
+			;;
+		1)
+			case $1 in
+				--version)
+					echo "$script_ver"
+					;;
+				--help)
+					_display_help_usage
+					;;
+				*)
+					_display_help_usage
+					exit 1
+					;;
+			esac
+			;;
+		    
+		2)
+			case $1 in
+				--enable)
+					_enable_plg $2
+					;;
+				--disable)
+					_disable_plg $2
+					;;
+				*)
+					_display_help_usage
+					exit 1
+					;;
+			esac
+			;;
+		3)
+			case $1 in
+				--insert-before)
+					_insert_plugin_before $2 $3
+					_scan_enabled_plgs
+					_normalize_prefixes
+					;;
+				*)
+					_display_help_usage
+					exit 1
+					;;
+			esac
+			;;
+		*)
+			_display_help_usage
+			exit 1
+			;;
+	esac
 
 	cd $current_dir
 	_log "<--- $FUNCNAME"
 }
 
-_main
-clear
+_main $@
+exit 0
