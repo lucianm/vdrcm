@@ -177,7 +177,7 @@ _has_vdr_section() {
 # $1 : base name of available plugin
 _check_enabled() {
 	for enabled_plg in "${enabled_plg_targets[@]}"; do
-		if [ "$(readlink -f ${ARGSDIR}/${enabled_plg})" == "$(readlink -f ${ARGSDIR}/../conf.avail/$1)" ]; then
+		if [ "$(readlink -f ${ARGSDIR}/${enabled_plg})" == "$(readlink -f ${CFG_AVAIL_DIR}/$1)" ]; then
 			return 0
 		fi
 	done
@@ -204,8 +204,10 @@ _remove_surrounding_quotes() {
 #
 _enable_plg() {
 	((numprefix = cnt_prefix_max))
-	if _has_vdr_section ${ARGSDIR}/../conf.avail/$1.conf; then ((numprefix = cnt_prefix_vdr)); fi
-	ln -s "../conf.avail/$1.conf" "${ARGSDIR}/$(_fmt_counter $numprefix)_$1.conf"
+	plg="$(_remove_surrounding_quotes $1)"
+	if _has_vdr_section ${CFG_AVAIL_DIR}/$plg.conf; then ((numprefix = cnt_prefix_vdr)); fi
+	ln -s "${AVAIL_SUBDIR}/$plg.conf" "${ARGSDIR}/$(_fmt_counter $numprefix)_$plg.conf"
+	_log "Enabling '$plg'"
 }
 
 
@@ -287,11 +289,11 @@ _enable_disable() {
 	local percent=0
 	local on_off=""
 	local plg_line=""
-		_has_vdr_section ${ARGSDIR}/../conf.avail/$avail_plg || plg_line="${plg_line} ${avail_plg/.conf/} $on_off"
 	{
 		for avail_plg in "${available_plg[@]}"; do
 			on_off="off"
 			_check_enabled $avail_plg && on_off="on"
+			_has_vdr_section ${CFG_AVAIL_DIR}/$avail_plg || plg_line="${plg_line} ${avail_plg/.conf/} $on_off"
 			((idx++))
 			((percent = idx * 100 / available_count))
 			sleep $sleep_delay
@@ -309,8 +311,9 @@ _enable_disable() {
 	$diaexec --title "$my_script $script_ver:" \
 		--clear $no_items \
 		--ok-$btn_label_suffix "Apply changes" \
-		--checklist "\nEnable/Disable VDR plugins found in\n\n${ARGSDIR}/../conf.avail:" 0 60 0${plg_line} \
+		--checklist "\nEnable/Disable VDR plugins found in\n\n${CFG_AVAIL_DIR}:" 0 60 0 ${plg_line} \
 		2> ${tmp_file}
+
 	[ $? -eq 0 ] && _process_symlinks vdr $(cat ${tmp_file})
 	_scan_enabled_plgs
 	_log "<--- $FUNCNAME"
