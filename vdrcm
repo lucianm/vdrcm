@@ -34,6 +34,21 @@ script_ver=0.0.1
 tmp_file="/tmp/${my_script}_buffer"
 log_file="/tmp/${my_script}.log"
 
+_timestamp_action() {
+	local datenow="$(date)"
+	printf '%s: %s' "$datenow" "$1"
+}
+
+_log() {
+	local msg="$(_timestamp_action "$1")"
+	printf '%s\n' "${msg}" >> $log_file
+	[ "$2" == "--printout" ] && printf '%s\n' "$1"
+}
+
+echo "" > $log_file
+_log "Starting $my_script ..."
+
+
 cnt_prefix_width=3
 cnt_prefix_vdr=0
 cnt_prefix_max=999
@@ -62,18 +77,9 @@ else
 fi
 
 
-_timestamp_action() {
-	echo "$(date): $1"
+
 }
 
-_log() {
-	local msg="$(echo $(_timestamp_action "$1"))"
-	echo "${msg}" >> $log_file
-#	echo "${msg}"
-}
-
-echo "" > $log_file
-_log "Starting $my_script ..."
 
 
 #
