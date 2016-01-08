@@ -101,13 +101,6 @@ _scan_enabled_plgs() {
 		enabled_sym=$(echo $enabled_sym | rev | cut -d ' ' -f1 | rev | cut -d '_' -f2)
 		enabled_plg_names[$idx]=${enabled_sym/.conf/}
 		enabled_plg_targets[${idx}]=$(ls -l ${ARGSDIR} | grep $plg | grep '>' | cut -d '>' -f2 | cut -d ' ' -f2)
-#
-#		echo enabled_plg_names[${idx}]=${enabled_plg_names[${idx}]}
-#		echo enabled_plg_syms[${idx}]=${enabled_plg_syms[${idx}]}
-#		echo enabled_plg_prefixes[${idx}]=${enabled_plg_prefixes[${idx}]}
-#		echo enabled_plg_targets[$idx]=${enabled_plg_targets[${idx}]}
-#		echo .
-#
 		((idx++))
 	done
 	let enabled_count=idx
