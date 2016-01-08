@@ -94,13 +94,13 @@ _scan_enabled_plgs() {
 	unset enabled_plg_targets
 	unset enabled_plg_prefixes
 	for plg in $(ls ${ARGSDIR}); do
-		enabled_sym=$(ls -l ${ARGSDIR} | grep $plg | grep '>' | cut -d '>' -f1)
+		enabled_sym=$(ls -l ${ARGSDIR} | grep $plg 2> /dev/null | grep '>' | cut -d '>' -f1)
 		enabled_sym=${enabled_sym/ -/}
 		enabled_plg_syms[$idx]=$(echo $enabled_sym | rev | cut -d ' ' -f1 | rev)
 		enabled_plg_prefixes[$idx]=$(echo $enabled_sym | rev | cut -d ' ' -f1 | rev | cut -d '_' -f1)
 		enabled_sym=$(echo $enabled_sym | rev | cut -d ' ' -f1 | rev | cut -d '_' -f2)
 		enabled_plg_names[$idx]=${enabled_sym/.conf/}
-		enabled_plg_targets[${idx}]=$(ls -l ${ARGSDIR} | grep $plg | grep '>' | cut -d '>' -f2 | cut -d ' ' -f2)
+		enabled_plg_targets[${idx}]=$(ls -l ${ARGSDIR} | grep $plg 2> /dev/null | grep '>' | cut -d '>' -f2 | cut -d ' ' -f2)
 		((idx++))
 	done
 	let enabled_count=idx
@@ -127,7 +127,7 @@ _scan_avail_plgs() {
 #
 # $1 : full path to args file to check
 _has_vdr_section() {
-	[ "$(grep '\[vdr]' $1)" == "[vdr]" ] && return 0
+	[ "$(grep '\[vdr]' $1 2> /dev/null)" == "[vdr]" ] && return 0
 	return 1
 }
 
@@ -273,7 +273,7 @@ _normalize_prefixes() {
 			realindex=$idx
 		fi
 		target_file="${ARGSDIR}/$(_fmt_counter $realindex)_${enabled_plg_names[${idx}]}.conf"
-		[ -e "$target_file" ] || mv -f -u -T "${ARGSDIR}/${enabled_plg_syms[${idx}]}" $target_file
+		[ -e "$target_file" ] || mv -f -u -T "${ARGSDIR}/${enabled_plg_syms[${idx}]}" $target_file 2> /dev/null
 	((idx++))
 	done
 	_log "<--- $FUNCNAME"
@@ -288,7 +288,7 @@ _insert_plugin_before() {
 	local plg_idx_src=$1
 	local plg_idx_dst=$2
 	mv "${ARGSDIR}/${enabled_plg_syms[${plg_idx_src}]}" \
-		"${ARGSDIR}/${enabled_plg_prefixes[${plg_idx_dst}]}0_${enabled_plg_names[${plg_idx_src}]}.conf"
+		"${ARGSDIR}/${enabled_plg_prefixes[${plg_idx_dst}]}0_${enabled_plg_names[${plg_idx_src}]}.conf" 2> /dev/null
 	_log "<--- $FUNCNAME"
 }
 
