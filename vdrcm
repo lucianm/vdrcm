@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 #
 # vdrcm: interactive console dialogs script for managing configuration files
@@ -235,7 +235,7 @@ _process_symlinks() {
 			found=0
 			((idx++))
 			for new_enabled in $@; do
-				if [ $i == $new_enabled ]; then
+				if [ "$i" == "$new_enabled" ]; then
 					found=1
 					break
 				fi
@@ -253,7 +253,7 @@ _process_symlinks() {
 			found=0
 			((idx++))
 			for i in "${enabled_plg_names[@]}"; do
-				if [ $i == $new_enabled ]; then
+				if [ "$i" == "$new_enabled" ]; then
 					found=1
 					break
 				fi
