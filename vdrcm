@@ -30,7 +30,7 @@
 
 
 my_script="$(basename $0)"
-script_ver=0.0.2
+script_ver=0.0.3
 tmp_file="/tmp/${my_script}_buffer"
 log_file="/tmp/${my_script}.log"
 
@@ -72,8 +72,10 @@ fi
 AVAIL_SUBDIR="../conf.avail"
 CFG_AVAIL_DIR=${ARGSDIR}/${AVAIL_SUBDIR}
 if [ ! -d "$ARGSDIR" ]; then
-	_log "Directory ARGSDIR='$ARGSDIR' does not exist !!" "--printout"
-	exit 2
+	_log "Directory ARGSDIR='$ARGSDIR' does not exist, creating now..." "--printout"
+	mkdir -p $ARGSDIR
+	chown vdr:vdr $ARGSDIR
+	ln -s $AVAIL_SUBDIR/vdr.conf $ARGSDIR/000_vdr.conf
 fi
 if [ ! -d "$CFG_AVAIL_DIR" ]; then
 	_log "Directory CFG_AVAIL_DIR='$CFG_AVAIL_DIR' does not exist !!" "--printout"

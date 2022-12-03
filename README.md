@@ -38,6 +38,9 @@ user's home which administers the VDR plugin configs, from ~/.vdrcm, which can b
 The script can be used in interactive mode, for enabling/disabling available plugins, changing their order,
 edit them. A visual usage summary can be seen in the [Wiki](https://github.com/lucianm/vdrcm/wiki/Short-visual-usage-summary).
 
+At start, the script checks if ARGSDIR exists, and if not, it will create it, chown it to the vdr:vdr
+user and symlink the vdr.conf from the mentioned pool directory of available configurations (/etc/vdr/conf.avail).
+
 <b>Command-line parameters:</b>
 
 Enabling a plugin, by its name:
@@ -60,4 +63,4 @@ Displaying the script version:
 GPL-2, see supplied [license file](https://github.com/lucianm/vdrcm/raw/master/LICENSE).
 
 
-Lucian Muresan, 2016.01.08
+Lucian Muresan, 2022.12.04

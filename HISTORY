@@ -1,3 +1,8 @@
+2022.12.04 - 0.0.3
+    - creating ARGSDIR (usually /etc/vdr/conf.d) at start if it does not yet exist;
+    - changed shebang to /bin/bash, added quotes to comparison of var between [ ... ] (thx
+    to an early contribution from Marcel "Trashcan" from vdr-portal.de)
+
 2016.01.08 - 0.0.2
     - checking for pkg-config, if not present, reading ARGSDIR from ~/.vdrcm;
     - ARGSDIR and $ARGSDIR/../conf.avail must exist, otherwise the script will exit;
